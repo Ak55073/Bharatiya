@@ -24,7 +24,6 @@ class RoleAssign(commands.Cog):
                 for member in guild.members:
                     for i in member.roles:
                         if i.name == str(role):
-                            print(member)
                             list_roles[role].append(member)
 
         await self.update_channel(list_roles)
