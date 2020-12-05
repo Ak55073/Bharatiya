@@ -4,15 +4,22 @@ from json import loads
 import discord
 from discord.ext import commands
 
+from Cogs.Commands import Commands
+from Cogs.MaintainDB import MaintainDB
+from Cogs.RoleAssign import RoleAssign
+from Cogs.ServerListener import ServerListener
+from Cogs.Twitch import Twitch
+
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix='>', intents=intents)
 bot.remove_command('help')
 
 if __name__ == "__main__":
-    # Importing Cogs
-    for file in os.listdir(os.getcwd() + r"\Cogs"):
-        if file.endswith(".py"):
-            bot.load_extension(f'Cogs.{file[:-3]}')
+    bot.add_cog(MaintainDB(bot))
+    bot.add_cog(Commands(bot))
+    bot.add_cog(RoleAssign(bot))
+    bot.add_cog(ServerListener(bot))
+    bot.add_cog(Twitch(bot))
 
     try:
         # For simplicity sake reading variable through config.json
