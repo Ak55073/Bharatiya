@@ -1,18 +1,10 @@
 {
-  "Token": {
-    "Main": "DISCORD_BOT_TOKEN",
-    "Test": "DISCORD_BOT_TOKEN"
+  "EXE_MODE": "MUST-BE-INT|0-FOR-TEST-TOKEN|1-FOR-MAIN-TOKEN",
+  "MAIN_TOKEN": "DISCORD_BOT_TOKEN",
+  "TEST_TOKEN": "DISCORD_BOT_TOKEN",
+  "TWITCH": {
+    "Client-ID": "TWITCH_APPLICATION_CLIENT_ID",
+    "Authorization": "Bearer AUTHENTICATION_TOKEN"
   },
-  "twitch_header": {
-    "Client-ID": "TWITCH_HEADER_USE_TO_ACCESS_TWITCH_API"
-  },
-  "special_roles": [
-    "LIST-OF-SPECIAL-ROLE-TO-ADD-IN-SELF-ASSIGN"
-  ],
-  "server_name": "YOUR-SERVER-NAME",
-  "server_id": YOUR-SERVER-ID-MUST-BE-INT,
-  "owner_id": YOUR-USER-ID,
-  "twitch_channel": CHANNEL-WHERE-TWITCH-STREAM-MESSAGE-ARE-SEND-ID-MUST-BE-INT,
-  "self_assign_channel": CHANNEL-FOR-ROLE-SELF-ASSIGN-ID-MUST-BE-INT,
-  "identifier_color": "#-UNIQUE-COLOR-WHICH-IS-USED-TO-IDENITY-GAMING-ROLE"
+  "MONGO": "MONGODB-CONNECTION-URL|mongodb+srv://USERNAME:PASSWORD@cluster0.ippbh.mongodb.net/DATABASE?retryWrites=true&w=majority"
 }
