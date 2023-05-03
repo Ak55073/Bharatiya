@@ -36,15 +36,6 @@ async def on_ready():
     # Cog sends join/leave notification of server members.
     await bot.add_cog(MemberManagerCog(bot, env_var, db_connection, db_cursor))
 
-    # Temp
-    my_guild = discord.Object(id=304284070215417856)
-    bot.tree.copy_global_to(guild=my_guild)
-    await bot.tree.sync(guild=my_guild)
-
-    my_guild = discord.Object(id=1069123831475753002)
-    bot.tree.copy_global_to(guild=my_guild)
-    await bot.tree.sync(guild=my_guild)
-
     # Changing bot Activity
     await bot.change_presence(activity=discord.Game(name='use >help'))
 
