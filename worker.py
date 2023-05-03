@@ -53,15 +53,16 @@ if __name__ == "__main__":
     try:
         # Reading variable through config.json
         env_var = loads(open("config.json", "r").read())
-
-        if env_var["DEBUG_MODE"]:
-            bot.run(env_var["DEBUG_TOKEN"])
-        else:
-            bot.run(env_var["MAIN_TOKEN"])
     except FileNotFoundError:
         # Reading variable through environment variable
         # ONLY when config.json not found
-        if os.environ["DEBUG_MODE"]:
-            bot.run(os.environ["DEBUG_TOKEN"])
-        else:
-            bot.run(os.environ["MAIN_TOKEN"])
+        env_var = dict()
+        env_var["DEBUG_MODE"] = int(os.environ["DEBUG_MODE"])
+        env_var["DM_OWNER"] = int(os.environ["DM_OWNER"])
+        env_var["DEBUG_TOKEN"] = os.environ["DEBUG_TOKEN"]
+        env_var["MAIN_TOKEN"] = os.environ["MAIN_TOKEN"]
+        
+    if env_var["DEBUG_MODE"]:
+        bot.run(env_var["DEBUG_TOKEN"])
+    else:
+        bot.run(env_var["MAIN_TOKEN"])
