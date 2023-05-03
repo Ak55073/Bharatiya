@@ -1,10 +1,6 @@
 {
-  "EXE_MODE": "MUST-BE-INT|0-FOR-TEST-TOKEN|1-FOR-MAIN-TOKEN",
+  "DEBUG_MODE": 1,
+  "DM_OWNER": 1,
   "MAIN_TOKEN": "DISCORD_BOT_TOKEN",
-  "TEST_TOKEN": "DISCORD_BOT_TOKEN",
-  "TWITCH": {
-    "Client-ID": "TWITCH_APPLICATION_CLIENT_ID",
-    "Authorization": "Bearer AUTHENTICATION_TOKEN"
-  },
-  "MONGO": "MONGODB-CONNECTION-URL|mongodb+srv://USERNAME:PASSWORD@cluster0.ippbh.mongodb.net/DATABASE?retryWrites=true&w=majority"
+  "DEBUG_TOKEN": "DISCORD_BOT_TOKEN",
 }
