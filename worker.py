@@ -61,7 +61,7 @@ if __name__ == "__main__":
         env_var["DM_OWNER"] = int(os.environ["DM_OWNER"])
         env_var["DEBUG_TOKEN"] = os.environ["DEBUG_TOKEN"]
         env_var["MAIN_TOKEN"] = os.environ["MAIN_TOKEN"]
-        
+
     if env_var["DEBUG_MODE"]:
         bot.run(env_var["DEBUG_TOKEN"])
     else:

@@ -3,5 +3,5 @@ WORKDIR /bot
 COPY requirements.txt /bot/
 RUN pip install -r requirements.txt
 COPY . /bot
-CMD python setup_db.py
+RUN python setup_db.py
 CMD python worker.py
