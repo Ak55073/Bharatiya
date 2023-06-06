@@ -11,7 +11,8 @@ class RMColorModel(commands.FlagConverter):
 
 
 class RMChannelModel(commands.FlagConverter):
-    channel: discord.TextChannel = commands.flag(
+    channel: discord.TextChannel | None = commands.flag(
+        default=None,
         description='Which channel should be used for self assign roles. Default: None'
     )
 
@@ -46,9 +47,3 @@ class RMServersModel:
     channel_id: int
     enabled: int = 1
     color: str = "#607d8b"
-
-
-@dataclass
-class RMRolesModel:
-    server_id: int
-    role_id: int

@@ -13,8 +13,15 @@ class MemberManagerCog(commands.Cog):
         self.env_var = env_var
         self.db_driver = MemberManagerDatabase(connection, cursor)
 
-    async def cog_command_error(self, ctx, error):
-        if isinstance(error, commands.MissingPermissions):
+    @commands.Cog.listener()
+    async def on_command_error(self, ctx, error):
+        if isinstance(error, commands.HybridCommandError):
+            error = getattr(error, 'original', error)
+
+        if isinstance(error, discord.app_commands.CommandInvokeError):
+            error = getattr(error, 'original', error)
+
+        if isinstance(error, commands.MissingPermissions) or isinstance(error, discord.errors.Forbidden):
             await ctx.send(f"An error occurred: {error}", ephemeral=True)
         elif isinstance(error, discord.errors.NotFound):
             await ctx.send(f"Something went wrong! Please try again. Make sure used command is valid.", ephemeral=True)
@@ -73,7 +80,7 @@ class MemberManagerCog(commands.Cog):
                     await member.add_roles(role_assign)
                 else:
                     # Role has been deleted from server. Removing it from database.
-                    self.db_driver.update_role(server_id=ctx.guild.id)
+                    self.db_driver.update_meta_role(server_id=ctx.guild.id)
 
         else:  # Member leaving server.
             embed.set_author(name=f"{member.display_name} has left {member.guild.name}", url="")
@@ -98,24 +105,24 @@ class MemberManagerCog(commands.Cog):
             channel = member.guild.get_channel(notify_data.channel_id)
             if channel is None:
                 # Channel has been deleted, removing this feature from server
-                self.db_driver.delete_server(member.guild.id)
+                self.db_driver.delete_meta(member.guild.id)
             else:
                 await channel.send(txt_msg, embed=embed)
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
-        notify_data = self.db_driver.fetch_server(member.guild.id)
+        notify_data = self.db_driver.fetch_meta(member.guild.id)
         if notify_data and notify_data.enable:
             await self.member_notification(member, notify_data, "join")
 
     @commands.Cog.listener()
     async def on_member_remove(self, member):
-        notify_data = self.db_driver.fetch_server(member.guild.id)
+        notify_data = self.db_driver.fetch_meta(member.guild.id)
         if notify_data and notify_data.enable:
             await self.member_notification(member, notify_data, "leave")
 
     @commands.hybrid_command(name="member-manager-help", description="Help regarding member notification feature.")
-    async def mm_help(self, ctx):
+    async def member_manager_help(self, ctx):
         embed = discord.Embed(
             title="Member Notification feature",
             description="Send a notification when a member joins or leaves this server.",
@@ -179,18 +186,21 @@ class MemberManagerCog(commands.Cog):
     @commands.hybrid_command(name="member-manager-create", description="Set-up member join/leave notifications.")
     @commands.has_permissions(administrator=True)
     async def create(self, ctx, *, data: models.MemberModel):
-        db_data = self.db_driver.fetch_server(ctx.guild.id)
+        if not data.role_id.is_assignable():
+            await ctx.send(f"**Failed**. Bhartiya doesn't have permission to manage <@&{data.role_id.id}>", ephemeral=True)
+            return
+
+        db_data = self.db_driver.fetch_meta(ctx.guild.id)
         if db_data:
             await ctx.send("Member manager is already activated. User /member-manager-detail for more info.")
         else:
-            self.db_driver.insert_server(server_id=ctx.guild.id, channel_id=data.channel_id.id,
-                                         role_id=data.role_id.id, message=data.message, enable=True)
+            self.db_driver.insert_meta(server_id=ctx.guild.id, channel_id=data.channel_id.id,
+                                       role_id=data.role_id.id, message=data.message, enable=True)
             await ctx.send("Member join/leave notification has been activated.", ephemeral=True)
 
     @commands.hybrid_command(name="member-manager-detail", description="Details about member notification")
     async def detail(self, ctx):
-        # TODO: Delete data on remove
-        notify_data = self.db_driver.fetch_server(ctx.guild.id)
+        notify_data = self.db_driver.fetch_meta(ctx.guild.id)
         if not notify_data:
             embed = discord.Embed(
                 title="MEMBER MANAGER",
@@ -251,7 +261,7 @@ class MemberManagerCog(commands.Cog):
         """
         Manually trigger join / leave notification
         """
-        notify_data = self.db_driver.fetch_server(ctx.guild.id)
+        notify_data = self.db_driver.fetch_meta(ctx.guild.id)
         if notify_data and notify_data.enable:
             await self.member_notification(ctx.author, notify_data, status, ctx=ctx)
         else:
@@ -260,20 +270,20 @@ class MemberManagerCog(commands.Cog):
     @commands.hybrid_command(name="member-manager-enable", description="Activate member notifications.")
     @commands.has_permissions(administrator=True)
     async def enable(self, ctx):
-        self.db_driver.update_enable(server_id=ctx.guild.id, enable=True)
+        self.db_driver.update_meta_enable(server_id=ctx.guild.id, enable=True)
         await ctx.send("Member notification have been activated.", ephemeral=True)
 
     @commands.hybrid_command(name="member-manager-disable", description="Deactivate member notifications.")
     @commands.has_permissions(administrator=True)
     async def disable(self, ctx):
-        self.db_driver.update_enable(server_id=ctx.guild.id, enable=False)
+        self.db_driver.update_meta_enable(server_id=ctx.guild.id, enable=False)
         await ctx.send("Member notification have been deactivated.", ephemeral=True)
 
     @commands.hybrid_command(name="member-manager-update_channel",
                              description="Update channel where the notifications will be sent.")
     @commands.has_permissions(administrator=True)
     async def update_channel(self, ctx, *, data: models.ChannelModel):
-        self.db_driver.update_channel(server_id=ctx.guild.id, channel_id=data.channel_id.id)
+        self.db_driver.update_meta_channel(server_id=ctx.guild.id, channel_id=data.channel_id.id)
         await ctx.send(f"Member notification **channel** has been updated to <#{data.channel_id.id}>.", ephemeral=True)
 
     @commands.hybrid_command(name="member-manager-update_message",
@@ -282,10 +292,10 @@ class MemberManagerCog(commands.Cog):
     @commands.has_permissions(administrator=True)
     async def update_message(self, ctx, *, data: models.MessageModel):
         if data.message:
-            self.db_driver.update_message(server_id=ctx.guild.id, message=data.message)
+            self.db_driver.update_meta_message(server_id=ctx.guild.id, message=data.message)
             await ctx.send(f"Member notification **message** has been updated to **{data.message}**.", ephemeral=True)
         else:
-            self.db_driver.update_message(server_id=ctx.guild.id)
+            self.db_driver.update_meta_message(server_id=ctx.guild.id)
             await ctx.send("Member notification **message** has been updated to **Enjoy your stay**.", ephemeral=True)
 
     @commands.hybrid_command(name="member-manager-update_role",
@@ -294,10 +304,15 @@ class MemberManagerCog(commands.Cog):
     @commands.has_permissions(administrator=True)
     async def update_role(self, ctx, *, data: models.RoleModel):
         if data.role_id:
-            self.db_driver.update_role(server_id=ctx.guild.id, role_id=data.role_id.id)
+            if not data.role_id.is_assignable():
+                await ctx.send(f"**Failed**. Bhartiya doesn't have permission to manage <@&{data.role_id.id}>",
+                               ephemeral=True)
+                return
+
+            self.db_driver.update_meta_role(server_id=ctx.guild.id, role_id=data.role_id.id)
             await ctx.send(f"Member will be assigned <@&{data.role_id.id}> on join.", ephemeral=True)
         else:
-            self.db_driver.update_role(server_id=ctx.guild.id)
+            self.db_driver.update_meta_role(server_id=ctx.guild.id)
             await ctx.send(f"Member will not be assigned any role on join.", ephemeral=True)
 
-# Delete data on guild remove.
+# TODO: Delete data on guild remove.

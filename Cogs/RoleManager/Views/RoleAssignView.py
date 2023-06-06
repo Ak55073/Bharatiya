@@ -8,18 +8,17 @@ class RoleViewAssign(discord.ui.View):
         self.db_driver = db_driver
 
     async def interaction_check(self, interaction, /) -> bool:
-        data = self.db_driver.fetch_rm_server(server_id=interaction.guild.id)
+        data = self.db_driver.fetch_one_meta(server_id=interaction.guild.id)
         if not data.enabled:
             await interaction.response.send_message(
-                f"Self assign is not activated in this server. use '/role-manager enable'"
+                f"Self assign is not activated in this server. use '/role-manager enable'", ephemeral=True
             )
-            await interaction.channel.purge()
             return False
         return True
 
     @discord.ui.button(label='Add', style=discord.ButtonStyle.green, custom_id='auto_assign:add')
     async def add(self, interaction: discord.Interaction, button: discord.ui.Button):
-        data = self.db_driver.fetch_rm_server(server_id=interaction.guild.id)
+        data = self.db_driver.fetch_one_meta(server_id=interaction.guild.id)
         if not data.enabled:
             await interaction.response.send_message("Command unavailable. "
                                                     "Role Manager is not activated in this server.",
@@ -31,7 +30,7 @@ class RoleViewAssign(discord.ui.View):
 
     @discord.ui.button(label='Remove', style=discord.ButtonStyle.red, custom_id='auto_assign:remove')
     async def remove(self, interaction: discord.Interaction, button: discord.ui.Button):
-        data = self.db_driver.fetch_rm_server(server_id=interaction.guild.id)
+        data = self.db_driver.fetch_one_meta(server_id=interaction.guild.id)
         if not data.enabled:
             await interaction.response.send_message("Command unavailable. "
                                                     "Role Manager is not activated in this server.",

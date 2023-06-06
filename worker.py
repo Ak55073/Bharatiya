@@ -1,6 +1,6 @@
 import os
+import psycopg2 as psycopg2
 from json import loads
-import sqlite3
 
 import discord
 from discord.ext import commands
@@ -19,7 +19,13 @@ async def on_ready():
     await bot.change_presence(activity=discord.Game(name='Starting...'))
 
     # Initializing Database Driver
-    db_connection = sqlite3.connect("database.db")
+    db_connection = psycopg2.connect(
+        database=data["Database"],
+        user=data["User"],
+        password=data["Password"],
+        host=data["Host"],
+        port=data["Port"],
+    )
     db_cursor = db_connection.cursor()
 
     # Dynamically setting bot owner id.
@@ -27,14 +33,13 @@ async def on_ready():
     bot.owner_id = app_info.owner.id
 
     # Adding Server Management Cog
-    # await bot.add_cog(ServerCog(bot, env_var, db_driver))
-    await bot.add_cog(RoleManagerCog(bot, env_var, db_connection, db_cursor))
+    await bot.add_cog(RoleManagerCog(bot, data, db_connection, db_cursor))
 
     # Cog containing miscellaneous commands
     await bot.add_cog(Commands(bot, db_connection, db_cursor))
 
     # Cog sends join/leave notification of server members.
-    await bot.add_cog(MemberManagerCog(bot, env_var, db_connection, db_cursor))
+    await bot.add_cog(MemberManagerCog(bot, data, db_connection, db_cursor))
 
     await bot.tree.sync()
 
@@ -42,20 +47,34 @@ async def on_ready():
     await bot.change_presence(activity=discord.Game(name='use >help'))
 
 
-if __name__ == "__main__":
+def read_config() -> dict:
     try:
-        # Reading variable through config.json
-        env_var = loads(open("config.json", "r").read())
+        # Reading variable through config.json, if present
+        env_data = loads(open("config.json", "r").read())
     except FileNotFoundError:
+        # Recommended for Security Reasons
         # Reading variable through environment variable
         # ONLY when config.json not found
-        env_var = dict()
-        env_var["DEBUG_MODE"] = int(os.environ["DEBUG_MODE"])
-        env_var["DM_OWNER"] = int(os.environ["DM_OWNER"])
-        env_var["DEBUG_TOKEN"] = os.environ["DEBUG_TOKEN"]
-        env_var["MAIN_TOKEN"] = os.environ["MAIN_TOKEN"]
+        env_data = os.environ
 
-    if env_var["DEBUG_MODE"]:
-        bot.run(env_var["DEBUG_TOKEN"])
+    env_var = dict()
+    env_var["DEBUG_MODE"] = bool(int(env_data["DEBUG_MODE"]))
+    env_var["DM_OWNER"] = bool(int(env_data["DM_OWNER"]))
+    env_var["DEBUG_TOKEN"] = env_data["DEBUG_TOKEN"]
+    env_var["MAIN_TOKEN"] = env_data["MAIN_TOKEN"]
+
+    env_var["Database"] = env_data["Database"]
+    env_var["User"] = env_data["User"]
+    env_var["Password"] = env_data["Password"]
+    env_var["Host"] = env_data["Host"]
+    env_var["Port"] = int(env_data["Port"])
+
+    return env_var
+
+
+if __name__ == "__main__":
+    data = read_config()
+    if data["DEBUG_MODE"]:
+        bot.run(data["DEBUG_TOKEN"])
     else:
-        bot.run(env_var["MAIN_TOKEN"])
+        bot.run(data["MAIN_TOKEN"])

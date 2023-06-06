@@ -18,10 +18,10 @@ class RoleManagerCog(commands.Cog):
 
     async def cog_load(self) -> None:
         self.bot.add_view(RoleViewAssign(self, self.db_driver))
-        server_data = self.db_driver.fetch_all_rm_servers()
+        server_data = self.db_driver.fetch_all_meta()
         for data in server_data:
             if data.enabled:
-                await self.refresh_server(ctx=None, server_id=data.server_id, server_data=data)
+                await self.refresh_server_silent(server_data=data)
 
     @staticmethod
     async def valid_color(text: str) -> bool:
@@ -50,7 +50,7 @@ class RoleManagerCog(commands.Cog):
     async def get_target_roles(self, guild: discord.Guild, color: str) -> dict[int, models.RoleModel]:
         target_roles: dict[int, models.RoleModel] = dict()
 
-        special_roles = self.db_driver.fetch_rm_roles_set(guild.id)
+        special_roles = self.db_driver.fetch_roles_set(guild.id)
         for role in guild.roles:
             role_id = int(role.id)
             if str(role.colour) == color or role_id in special_roles:
@@ -97,10 +97,9 @@ class RoleManagerCog(commands.Cog):
             await self.send_role_view(role_data, target_channel)
         return True
 
-    async def refresh_server(self, ctx, server_id: int, server_data: models.RMServersModel | None = None):
-        # TODO: Check if this handle all update
+    async def refresh_server_silent(self, server_id: int = None, server_data: models.RMServersModel | None = None):
         if server_data is None:
-            server_data = self.db_driver.fetch_rm_server(server_id)
+            server_data = self.db_driver.fetch_one_meta(server_id)
             if server_data is None:
                 return
 
@@ -111,11 +110,24 @@ class RoleManagerCog(commands.Cog):
             return
 
         # Error occurred. Disabling self assign
-        self.db_driver.update_rm_channel(server_id)
-        if ctx:
-            await ctx.send("Error occurred with self assign. Make sure selected channel does not contain any messages. "
-                           "Use '/role-manager-set-channel' to activate self assign.", ephemeral=True)
-        return
+        self.db_driver.update_meta_channel(server_id)
+
+    async def refresh_server(self, ctx, server_id: int, server_data: models.RMServersModel | None = None):
+        if server_data is None:
+            server_data = self.db_driver.fetch_one_meta(server_id)
+            if server_data is None:
+                return
+
+        if not server_data.enabled:
+            return
+
+        if await self.refresh_server_process(server_data):
+            return
+
+        # Error occurred. Disabling self assign
+        self.db_driver.update_meta_channel(server_id)
+        await ctx.send("Error occurred with self assign. Make sure selected channel does not contain any messages. "
+                       "Use '/role-manager-set-channel' to activate self assign.", ephemeral=True)
 
     @commands.Cog.listener()
     async def on_member_update(self, before, after):
@@ -136,7 +148,7 @@ class RoleManagerCog(commands.Cog):
             return
 
         # Server has role-manager feature enabled
-        server_data = self.db_driver.fetch_rm_server(after.guild.id)
+        server_data = self.db_driver.fetch_one_meta(after.guild.id)
         if not server_data or not server_data.enabled:
             return
 
@@ -144,24 +156,24 @@ class RoleManagerCog(commands.Cog):
         if role_ob is None:
             return
 
-        if role_ob.color == server_data.color or role_ob.id in self.db_driver.fetch_rm_roles_set(after.guild.id):
+        if role_ob.color == server_data.color or role_ob.id in self.db_driver.fetch_roles_set(after.guild.id):
             await after.add_roles(role_ob)
 
     @commands.Cog.listener()
     async def on_guild_role_create(self, role):
-        server_data = self.db_driver.fetch_rm_server(role.guild.id)
+        server_data = self.db_driver.fetch_one_meta(role.guild.id)
         if server_data and server_data.enabled and role.colour == server_data.color:
-            await self.refresh_server(ctx=None, server_id=role.guild.id)
+            await self.refresh_server_silent(server_id=role.guild.id)
 
     @commands.Cog.listener()
     async def on_guild_role_delete(self, role):
-        server_data = self.db_driver.fetch_rm_server(role.guild.id)
+        server_data = self.db_driver.fetch_one_meta(role.guild.id)
         if not server_data or not server_data.enabled:
             return
 
-        target_roles = self.db_driver.fetch_rm_roles_set(role.guild.id)
+        target_roles = self.db_driver.fetch_roles_set(role.guild.id)
         if role.id in target_roles or role.colour == server_data.color:
-            await self.refresh_server(ctx=None, server_id=role.guild.id)
+            await self.refresh_server_silent(server_id=role.guild.id)
 
     @commands.Cog.listener()
     async def on_guild_role_update(self, before, after):
@@ -169,17 +181,17 @@ class RoleManagerCog(commands.Cog):
         if before.name == after.name and before.color == after.color:
             return
 
-        await self.refresh_server(ctx=None, server_id=after.guild.id)
+        await self.refresh_server_silent(server_id=after.guild.id)
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel):
-        server_data = self.db_driver.fetch_rm_server(channel.guild.id)
+        server_data = self.db_driver.fetch_one_meta(channel.guild.id)
         if server_data and channel.id == server_data.channel_id:
-            self.db_driver.update_rm_channel(channel.guild.id)
+            self.db_driver.update_meta_channel(channel.guild.id)
 
     @commands.Cog.listener()
     async def on_guild_remove(self, guild):
-        self.db_driver.delete_rm_record(guild.id)
+        self.db_driver.delete_record(guild.id)
 
     @commands.hybrid_command(name="role-manager-help", description="How to use role manager?")
     async def help(self, ctx):
@@ -280,18 +292,18 @@ class RoleManagerCog(commands.Cog):
             await ctx.send("Invalid color code! Provide a valid HEX Color Code as #XXXXXX", ephemeral=True)
             return
 
-        server_data = self.db_driver.fetch_rm_server(ctx.guild.id)
+        server_data = self.db_driver.fetch_one_meta(ctx.guild.id)
         if server_data:
             await ctx.send("Role Manager is already activated. Use /role-manager-detail for more info.", ephemeral=True)
         else:
-            self.db_driver.insert_rm_server(server_id=ctx.guild.id, color=data.color)
-            await self.refresh_server(ctx=None, server_id=ctx.guild.id)
+            self.db_driver.insert_meta(server_id=ctx.guild.id, color=data.color)
+            await self.refresh_server_silent(server_id=ctx.guild.id)
             await ctx.send("Role Manager has activated successfully. "
                            "Use /role-manager-set-channel to enable self assign.", ephemeral=True)
 
     @commands.hybrid_command(name="role-manager-detail", description="Details regarding role manager.")
     async def detail(self, ctx):
-        server_data = self.db_driver.fetch_rm_server(server_id=ctx.guild.id)
+        server_data = self.db_driver.fetch_one_meta(server_id=ctx.guild.id)
         if not server_data:
             embed = discord.Embed(
                 title="ROLE MANAGER",
@@ -330,7 +342,7 @@ class RoleManagerCog(commands.Cog):
             if server_data.channel_id:
                 embed.add_field(
                     name='Self Assign',
-                    value="Enabled",
+                    value="Enabled" if bool(server_data.enabled) else "Disabled",
                     inline=True
                 )
 
@@ -354,7 +366,7 @@ class RoleManagerCog(commands.Cog):
                 inline=False
             )
 
-            for _, role_id in self.db_driver.fetch_rm_roles_set(ctx.guild.id):
+            for role_id in self.db_driver.fetch_roles_set(ctx.guild.id):
                 embed.add_field(
                     name="",
                     value="<@&" + str(role_id) + ">",
@@ -367,35 +379,41 @@ class RoleManagerCog(commands.Cog):
                                                                           "Use /role-manager-help for more info.")
     @commands.has_permissions(administrator=True)
     async def update_self_assign_channel(self, ctx, *, data: models.RMChannelModel):
-        server_data = self.db_driver.fetch_rm_server(ctx.guild.id)
+        server_data = self.db_driver.fetch_one_meta(ctx.guild.id)
         if not server_data or not server_data.enabled:
             await ctx.send(f"Command unavailable. Role Manager is not activated in this server.", ephemeral=True)
             return
 
+        channel_id = data.channel.id if data.channel else None
         prev_channel = server_data.channel_id
 
-        if prev_channel == data.channel.id:
+        if prev_channel == channel_id:
             await ctx.send(f"New channel is same as old channel.", ephemeral=True)
             return
-
-        self.db_driver.update_rm_channel(ctx.guild.id, data.channel.id)
-        await self.refresh_server(ctx, ctx.guild.id)
-        await ctx.send(f"Self assign channel switched to <#{data.channel.id}>", ephemeral=True)
 
         if prev_channel:
             confirm = ConfirmationView(confirm="Previous channel cleared.", cancel="Skipped.")
             await ctx.send("Do you wish to delete messages in previous channel? (This will delete **all messages**"
-                           " from previous channel.)", view=confirm, ephemeral=True)
+                           " from <#"+str(prev_channel)+">.)", view=confirm, ephemeral=True)
 
             await confirm.wait()
             if confirm.value is None:
-                return
+                pass
             elif not confirm.value:
-                return
+                pass
+            else:
+                target_channel = ctx.guild.get_channel(prev_channel)
+                if target_channel:
+                    await target_channel.purge()
 
-            target_channel = ctx.guild.get_channel(prev_channel)
-            if target_channel:
-                await target_channel.purge()
+        if channel_id:
+            await ctx.send(f"Self assign channel switched to <#{channel_id}>", ephemeral=True)
+            self.db_driver.update_meta_channel(ctx.guild.id, channel_id)
+            await self.refresh_server(ctx, ctx.guild.id)
+        else:
+            await ctx.send(f"Self assign has been removed from the server.", ephemeral=True)
+            self.db_driver.update_meta_channel(ctx.guild.id, channel_id)
+            await self.refresh_server_silent(ctx.guild.id)
 
     @commands.hybrid_command(name="role-manager-color", description="Set role manager color. "
                                                                     "Use /role-manager-help for more info.")
@@ -405,24 +423,21 @@ class RoleManagerCog(commands.Cog):
             await ctx.send("Invalid color code! Provide a valid HEX Color Code as #XXXXXX", ephemeral=True)
             return
 
-        server_data = self.db_driver.fetch_rm_server(ctx.guild.id)
+        server_data = self.db_driver.fetch_one_meta(ctx.guild.id)
         if server_data and server_data.enabled:
-            self.db_driver.update_rm_color(ctx.guild.id, data.color)
+            self.db_driver.update_meta_color(ctx.guild.id, data.color)
             await ctx.send(f"Role manager color changed successfully.", ephemeral=True)
             if server_data.channel_id:
                 target_channel = ctx.guild.get_channel(server_data.channel_id)
-                if target_channel:
-                    pass
-                    # TODO: better
-                    # await target_channel.purge()
+                if not target_channel:
+                    self.db_driver.update_meta_channel(ctx.guild.id, channel_id=None)
                 else:
-                    self.db_driver.update_rm_channel(ctx.guild.id)
-                await self.refresh_server(ctx, ctx.guild.id)
+                    await self.refresh_server_silent(ctx.guild.id)
         else:
             await ctx.send(f"Command unavailable. Role Manager is not activated in this server.", ephemeral=True)
 
     async def switch_enable(self, ctx, enable):
-        server_data = self.db_driver.fetch_rm_server(server_id=ctx.guild.id)
+        server_data = self.db_driver.fetch_one_meta(server_id=ctx.guild.id)
         if not server_data:
             message = "Set-up auto assign before using this command. Use '/role-manager create'"
         else:
@@ -430,14 +445,14 @@ class RoleManagerCog(commands.Cog):
                 message = f"Auto Role is already {'enabled' if enable else 'disabled'} in this server.\n"
             else:
                 message = f"Auto Role has been {'enabled' if enable else 'disabled'}.\n"
-                self.db_driver.update_rm_enable(ctx.guild.id, enable=bool(enable))
+                self.db_driver.update_meta_enable(ctx.guild.id, enable=bool(enable))
         await ctx.send(message, ephemeral=True)
 
     @commands.hybrid_command(name="role-manager-enable", description="Enable role manager features.")
     @commands.has_permissions(administrator=True)
     async def enable(self, ctx):
         await self.switch_enable(ctx, 1)
-        await self.refresh_server(ctx, ctx.guild.id)
+        await self.refresh_server_silent(ctx.guild.id)
 
     @commands.hybrid_command(name="role-manager-disable", description="Disable role manager features.")
     @commands.has_permissions(administrator=True)
@@ -447,35 +462,42 @@ class RoleManagerCog(commands.Cog):
     @commands.hybrid_command(name="role-manager-add-role", description="Add a special role.")
     @commands.has_permissions(administrator=True)
     async def add_role(self, ctx, *, data: models.SpecialRoleData):
+        if not data.role.is_assignable():
+            await ctx.send(f"**Failed**. Bhartiya doesn't have permission to manage <@&{data.role.id}>", ephemeral=True)
+            return
+
         try:
-            self.db_driver.insert_rm_role(ctx.guild.id, data.role.id)
-            await self.refresh_server(ctx, ctx.guild.id)
+            self.db_driver.insert_role(ctx.guild.id, data.role.id)
             message = f"<@&{data.role.id}> added to self assign."
+            await ctx.send(message, ephemeral=True)
+            await self.refresh_server_silent(ctx.guild.id)
         except sqlite3.IntegrityError:
             message = f"<@&{data.role.id}> is already added to special role list."
-        await ctx.send(message, ephemeral=True)
+            await ctx.send(message, ephemeral=True)
 
     @commands.hybrid_command(name="role-manager-remove-role", description="Remove a special role.")
     @commands.has_permissions(administrator=True)
     async def remove_role(self, ctx, *, data: models.SpecialRoleData):
-        row = self.db_driver.delete_rm_role(role_id=data.role.id)
+        row = self.db_driver.delete_role(role_id=data.role.id)
         if row:
-            await self.refresh_server(ctx, ctx.guild.id)
             message = f"<@&{data.role.id}> deleted from self assign."
+            await ctx.send(message, ephemeral=True)
+            await self.refresh_server_silent(ctx.guild.id)
         else:
             message = f"<@&{data.role.id}> doesn't exist in self assign."
-        await ctx.send(message, ephemeral=True)
+            await ctx.send(message, ephemeral=True)
 
     @commands.hybrid_command(name="role-manager-refresh", description="Add special role.")
     @commands.has_permissions(administrator=True)
     async def refresh(self, ctx):
+        await ctx.send("Refresh Started.", ephemeral=True)
         await self.refresh_server(ctx, server_id=ctx.guild.id)
         await ctx.send("Refresh successful.", ephemeral=True)
 
     @commands.hybrid_command(name="role-manager-refresh_all", description="Add special role.")
     @commands.is_owner()
     async def refresh_all(self, ctx):
-        server_data = self.db_driver.fetch_all_rm_servers()
+        server_data = self.db_driver.fetch_all_meta()
         for data in server_data:
             await self.refresh_server(ctx, server_id=data.server_id, server_data=data)
         await ctx.send("Refresh successful.", ephemeral=True)
