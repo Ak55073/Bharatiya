@@ -21,6 +21,7 @@ class RoleManagerCog(commands.Cog):
         server_data = self.db_driver.fetch_all_meta()
         for data in server_data:
             if data.enabled:
+                # TODO: Error if not in server
                 await self.refresh_server_silent(server_data=data)
 
     @staticmethod

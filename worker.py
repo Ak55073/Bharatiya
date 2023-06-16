@@ -3,7 +3,7 @@ import psycopg2 as psycopg2
 from json import loads
 
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from Cogs.CommandsManager.Commands import Commands
 from Cogs.RoleManager.RoleManagerCog import RoleManagerCog
@@ -11,6 +11,11 @@ from Cogs.MemberManager.MemberCog import MemberManagerCog
 
 bot = commands.Bot(command_prefix='>', intents=discord.Intents.all())
 bot.remove_command('help')
+
+
+@tasks.loop(minutes=25)
+async def keep_db_alive(db_cursor):
+    db_cursor.execute('SELECT 1')
 
 
 @bot.event
@@ -24,13 +29,11 @@ async def on_ready():
         user=data["User"],
         password=data["Password"],
         host=data["Host"],
-        port=data["Port"],
-        keepalives=1,
-        keepalives_idle=30,
-        keepalives_interval=10,
-        keepalives_count=5
+        port=data["Port"]
     )
     db_cursor = db_connection.cursor()
+
+    keep_db_alive.start(db_cursor)
 
     # Dynamically setting bot owner id.
     app_info = await bot.application_info()
