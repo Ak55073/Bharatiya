@@ -26,9 +26,9 @@ async def on_ready():
         host=data["Host"],
         port=data["Port"],
         keepalives=1,
-        keepalives_idle=5,
-        keepalives_interval=2,
-        keepalives_count=2
+        keepalives_idle=30,
+        keepalives_interval=10,
+        keepalives_count=5
     )
     db_cursor = db_connection.cursor()
 
